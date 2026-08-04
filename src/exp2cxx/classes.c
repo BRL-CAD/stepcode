@@ -35,6 +35,12 @@ N350 ( August 31, 1993 ) of ISO 10303 TC184/SC4/WG7.
 int multiple_inheritance = 1;
 int print_logging = 0;
 int old_accessors = 0;
+unsigned long exp2cxx_entity_chunk_size = 64;
+unsigned long exp2cxx_type_chunk_size = 8;
+int exp2cxx_api_version = 1;
+int exp2cxx_late_bound = 0;
+int exp2cxx_compat_names = 0;
+int exp2cxx_metadata_profile = Exp2CxxMetadata_Full;
 
 /**
  * Turn the string into a new string that will be printed the same as the
@@ -52,10 +58,13 @@ char * format_for_stringout( char * orig_buf, char * return_buf ) {
             *rptr = '\\';
             rptr++;
             *rptr = 'n';
-        } else if( *optr == '\\' ) {
+        } else if( *optr == '\\' || *optr == '"' ) {
             *rptr = '\\';
             rptr++;
             *rptr = '\\';
+            if( *optr == '"' ) {
+                *rptr = '"';
+            }
         } else {
             *rptr = *optr;
         }
@@ -203,7 +212,6 @@ void USEREFout( Schema schema, Dictionary refdict, Linked_List reflist, char * t
 }
 
 int Handle_FedPlus_Args( int i, char * arg ) {
-    (void) arg; /* unused */
     if( ( ( char )i == 's' ) || ( ( char )i == 'S' ) ) {
         multiple_inheritance = 0;
     }
@@ -212,6 +220,64 @@ int Handle_FedPlus_Args( int i, char * arg ) {
     }
     if( ( ( char )i == 'l' ) || ( ( char )i == 'L' ) ) {
         print_logging = 1;
+    }
+    if( ( char )i == 'k' ) {
+        char * end = 0;
+        unsigned long entity_requested;
+        unsigned long type_requested;
+        if( !arg || !arg[0] ) {
+            fprintf( stderr, "exp2cxx: chunk sizes must use N or N:N form\n" );
+            return 1;
+        }
+        entity_requested = strtoul( arg, &end, 10 );
+        if( !end || entity_requested == 0 ) {
+            fprintf( stderr, "exp2cxx: chunk sizes must be positive integers\n" );
+            return 1;
+        }
+        type_requested = entity_requested;
+        if( *end == ':' ) {
+            char * type_end = 0;
+            type_requested = strtoul( end + 1, &type_end, 10 );
+            if( !end[1] || !type_end || *type_end || type_requested == 0 ) {
+                fprintf( stderr, "exp2cxx: chunk sizes must use N or N:N form\n" );
+                return 1;
+            }
+        } else if( *end ) {
+            fprintf( stderr, "exp2cxx: chunk sizes must use N or N:N form\n" );
+            return 1;
+        }
+        exp2cxx_entity_chunk_size = entity_requested;
+        exp2cxx_type_chunk_size = type_requested;
+    }
+    if( ( char )i == 'V' ) {
+        char * end = 0;
+        long requested = arg ? strtol( arg, &end, 10 ) : 0;
+        if( !arg || !arg[0] || !end || *end || ( requested != 1 && requested != 2 ) ) {
+            fprintf( stderr, "exp2cxx: API version must be 1 or 2\n" );
+            return 1;
+        }
+        if( exp2cxx_late_bound && requested != 2 ) {
+            fprintf( stderr, "exp2cxx: late-bound output requires API version 2\n" );
+            return 1;
+        }
+        exp2cxx_api_version = ( int )requested;
+    }
+    if( ( char )i == 'T' ) {
+        exp2cxx_late_bound = 1;
+        exp2cxx_api_version = 2;
+    }
+    if( ( char )i == 'N' ) {
+        exp2cxx_compat_names = 1;
+    }
+    if( ( char )i == 'M' ) {
+        if( !arg || ( strcmp( arg, "full" ) &&
+                      strcmp( arg, "structural" ) ) ) {
+            fprintf( stderr,
+                     "exp2cxx: metadata profile must be full or structural\n" );
+            return 1;
+        }
+        exp2cxx_metadata_profile = !strcmp( arg, "structural" ) ?
+            Exp2CxxMetadata_Structural : Exp2CxxMetadata_Full;
     }
     return 0;
 }

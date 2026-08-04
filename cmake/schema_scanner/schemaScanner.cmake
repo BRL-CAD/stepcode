@@ -18,6 +18,44 @@ else(NOT DEFINED SC_UNITY_BUILD)
   message( STATUS "Respecting user-defined SC_UNITY_BUILD value of ${SC_UNITY_BUILD}.")
 endif(NOT DEFINED SC_UNITY_BUILD)
 
+if(NOT DEFINED SC_EXP2CXX_CHUNK_SIZE)
+  set(SC_EXP2CXX_CHUNK_SIZE "64:8" CACHE STRING "Maximum entity:type objects in generated unity translation units")
+endif()
+
+if(NOT DEFINED SC_EXP2CXX_API_VERSION)
+  set(SC_EXP2CXX_API_VERSION "1")
+endif()
+set(SC_EXP2CXX_API_VERSION "${SC_EXP2CXX_API_VERSION}" CACHE STRING "Generated C++ API version (1 or 2)")
+set_property(CACHE SC_EXP2CXX_API_VERSION PROPERTY STRINGS 1 2)
+if(NOT SC_EXP2CXX_API_VERSION MATCHES "^[12]$")
+  message(FATAL_ERROR "SC_EXP2CXX_API_VERSION must be 1 or 2")
+endif()
+
+option(SC_EXP2CXX_LATE_BOUND "Generate descriptor-backed entities without early-bound C++ entity classes" OFF)
+if(SC_EXP2CXX_LATE_BOUND AND NOT SC_EXP2CXX_API_VERSION STREQUAL "2")
+  message(FATAL_ERROR "SC_EXP2CXX_LATE_BOUND requires SC_EXP2CXX_API_VERSION=2")
+endif()
+
+option(SC_EXP2CXX_COMPAT_NAMES "Retain generated entity aliases in late-bound output" OFF)
+if(SC_EXP2CXX_COMPAT_NAMES AND NOT SC_EXP2CXX_LATE_BOUND)
+  message(FATAL_ERROR "SC_EXP2CXX_COMPAT_NAMES requires SC_EXP2CXX_LATE_BOUND=ON")
+endif()
+
+if(NOT DEFINED SC_EXP2CXX_METADATA)
+  set(SC_EXP2CXX_METADATA "full")
+endif()
+set(SC_EXP2CXX_METADATA "${SC_EXP2CXX_METADATA}" CACHE STRING
+  "Generated schema metadata profile (full or structural)")
+set_property(CACHE SC_EXP2CXX_METADATA PROPERTY STRINGS full structural)
+if(NOT SC_EXP2CXX_METADATA MATCHES "^(full|structural)$")
+  message(FATAL_ERROR "SC_EXP2CXX_METADATA must be full or structural")
+endif()
+if(SC_EXP2CXX_METADATA STREQUAL "structural" AND
+   NOT SC_EXP2CXX_LATE_BOUND)
+  message(FATAL_ERROR
+    "SC_EXP2CXX_METADATA=structural requires SC_EXP2CXX_LATE_BOUND=ON")
+endif()
+
 
 # --- variables ---
 # SC_ROOT: SC root dir
@@ -82,7 +120,7 @@ endif(WIN32)
 # SCHEMA_FILE - path to the schema
 # TODO should we have a result variable to return schema name(s) found?
 macro(SCHEMA_CMLIST SCHEMA_FILE)
-  execute_process(COMMAND ${SCANNER_OUT_DIR}/schema_scanner ${SCHEMA_FILE}
+  execute_process(COMMAND ${SCANNER_OUT_DIR}/schema_scanner ${SCHEMA_FILE} ${SC_EXP2CXX_CHUNK_SIZE}
                    WORKING_DIRECTORY ${SC_BINARY_DIR}/schemas
                    RESULT_VARIABLE _ss_stat
                    OUTPUT_VARIABLE _ss_out
@@ -101,7 +139,11 @@ macro(SCHEMA_CMLIST SCHEMA_FILE)
     list(FIND _already_added "${_dir}" _idx)
     if(${_idx} EQUAL -1)
        set_property(GLOBAL APPEND PROPERTY _SC_SCHEMA_DIRS "${_dir}")
-       add_subdirectory(${_dir} ${_dir}) #specify source and binary dirs as the same
+       # Keep generated targets under the top-level binary tree.  Passing the
+       # absolute generated-source path as both arguments creates absolute
+       # make target names with newer CMake.
+       get_filename_component(_schema_dir_name "${_dir}" NAME)
+       add_subdirectory("${_dir}" "${SC_BINARY_DIR}/schema-targets/${_schema_dir_name}")
     endif()
   endforeach(_dir ${_ss_out})
   # configure_file forces cmake to run again if the schema has been modified

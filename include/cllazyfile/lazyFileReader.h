@@ -1,6 +1,7 @@
 #ifndef LAZYFILEREADER_H
 #define LAZYFILEREADER_H
 
+#include <atomic>
 #include <vector>
 #include <string>
 #include <cstdlib>
@@ -32,11 +33,14 @@ class SC_LAZYFILE_EXPORT lazyFileReader {
         lazyInstMgr * _parent;
         headerSectionReader * _header;
         std::ifstream _file;
+        std::atomic<bool> _schemaWarningClaimed;
 #ifdef _MSC_VER
 #pragma warning( pop )
 #endif
         fileTypeEnum _fileType;
         fileID _fileID;
+        lazyFileOffset _fileSize;
+        bool _valid;
 
         void initP21();
 
@@ -47,6 +51,12 @@ class SC_LAZYFILE_EXPORT lazyFileReader {
     public:
         fileID ID() const {
             return _fileID;
+        }
+        lazyFileOffset fileSize() const {
+            return _fileSize;
+        }
+        bool valid() const {
+            return _valid;
         }
         instancesLoaded_t * getHeaderInstances();
 
@@ -60,8 +70,15 @@ class SC_LAZYFILE_EXPORT lazyFileReader {
             return _parent;
         }
 
+        /** Return true only to the first caller reporting a FILE_SCHEMA
+         * selection warning for this file.  Instance materialization may
+         * occur concurrently and span multiple DATA sections. */
+        bool claimSchemaWarning() {
+            return !_schemaWarningClaimed.exchange( true,
+                std::memory_order_relaxed );
+        }
+
         bool needKW( const char * kw );
 };
 
 #endif //LAZYFILEREADER_H
-
